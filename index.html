@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Гонка на машине</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+        }
+        #speedometer {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 100;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background: rgba(0,0,0,0.8);
+            padding: 30px 50px;
+            border-radius: 10px;
+            font-size: 18px;
+            z-index: 200;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <strong>Управление:</strong><br>
+        W / ↑ — газ<br>
+        S / ↓ — тормоз/назад<br>
+        A / ← — поворот влево<br>
+        D / → — поворот вправо<br>
+        Пробел — ручной тормоз
+    </div>
+    <div id="speedometer">0 км/ч</div>
+    <div id="loading">Загрузка...</div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // Сцена
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 100, 500);
+
+        // Камера
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 10);
+
+        // Рендерер
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // Освещение
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(50, 100, 50);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 500;
+        directionalLight.shadow.camera.left = -100;
+        directionalLight.shadow.camera.right = 100;
+        directionalLight.shadow.camera.top = 100;
+        directionalLight.shadow.camera.bottom = -100;
+        scene.add(directionalLight);
+
+        // Земля (поле)
+        const groundGeometry = new THREE.PlaneGeometry(500, 500, 50, 50);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x3a7d44,
+            roughness: 0.8
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Дорога
+        const roadGeometry = new THREE.PlaneGeometry(10, 500);
+        const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const road = new THREE.Mesh(roadGeometry, roadMaterial);
+        road.rotation.x = -Math.PI / 2;
+        road.position.y = 0.01;
+        road.receiveShadow = true;
+        scene.add(road);
+
+        // Разметка дороги
+        for (let i = -250; i < 250; i += 10) {
+            const lineGeometry = new THREE.PlaneGeometry(0.3, 4);
+            const lineMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const line = new THREE.Mesh(lineGeometry, lineMaterial);
+            line.rotation.x = -Math.PI / 2;
+            line.position.set(0, 0.02, i);
+            scene.add(line);
+        }
+
+        // Деревья
+        function createTree(x, z) {
+            const trunkGeometry = new THREE.CylinderGeometry(0.3, 0.4, 3, 8);
+            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x4a2511 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.set(x, 1.5, z);
+            trunk.castShadow = true;
+            scene.add(trunk);
+
+            const leavesGeometry = new THREE.ConeGeometry(2, 5, 8);
+            const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5016 });
+            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+            leaves.position.set(x, 5, z);
+            leaves.castShadow = true;
+            scene.add(leaves);
+        }
+
+        // Расставляем деревья
+        for (let i = 0; i < 50; i++) {
+            const x = (Math.random() - 0.5) * 400;
+            const z = (Math.random() - 0.5) * 400;
+            if (Math.abs(x) > 8) {
+                createTree(x, z);
+            }
+        }
+
+        // Загрузка модели машины
+        let car;
+        let carSpeed = 0;
+        let carRotation = 0;
+        const maxSpeed = 0.8;
+        const acceleration = 0.015;
+        const deceleration = 0.01;
+        const turnSpeed = 0.03;
+
+        const loader = new GLTFLoader();
+        loader.load('scene.gltf', function(gltf) {
+            car = gltf.scene;
+            car.scale.set(1, 1, 1);
+            car.position.set(0, 0.5, 0);
+            
+            // Включаем тени для всех мешей
+            car.traverse(function(child) {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            scene.add(car);
+            document.getElementById('loading').style.display = 'none';
+        }, function(xhr) {
+            console.log((xhr.loaded / xhr.total * 100) + '% загружено');
+        }, function(error) {
+            console.error('Ошибка загрузки модели:', error);
+            document.getElementById('loading').textContent = 'Ошибка загрузки модели. Убедитесь, что файл scene.gltf находится в той же папке.';
+        });
+
+        // Управление
+        const keys = {};
+        window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+
+        // Анимация
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta();
+            
+            if (car) {
+                // Управление
+                if (keys['w'] || keys['arrowup']) {
+                    carSpeed = Math.min(carSpeed + acceleration, maxSpeed);
+                } else if (keys['s'] || keys['arrowdown']) {
+                    carSpeed = Math.max(carSpeed - acceleration, -maxSpeed / 2);
+                } else {
+                    // Торможение
+                    if (carSpeed > 0) {
+                        carSpeed = Math.max(carSpeed - deceleration, 0);
+                    } else if (carSpeed < 0) {
+                        carSpeed = Math.min(carSpeed + deceleration, 0);
+                    }
+                }
+
+                // Ручной тормоз
+                if (keys[' ']) {
+                    if (carSpeed > 0) {
+                        carSpeed = Math.max(carSpeed - deceleration * 3, 0);
+                    } else if (carSpeed < 0) {
+                        carSpeed = Math.min(carSpeed + deceleration * 3, 0);
+                    }
+                }
+
+                // Поворот
+                if (Math.abs(carSpeed) > 0.01) {
+                    if (keys['a'] || keys['arrowleft']) {
+                        carRotation += turnSpeed * (carSpeed > 0 ? 1 : -1);
+                    }
+                    if (keys['d'] || keys['arrowright']) {
+                        carRotation -= turnSpeed * (carSpeed > 0 ? 1 : -1);
+                    }
+                }
+
+                // Применяем движение
+                car.rotation.y = carRotation;
+                car.position.x += Math.sin(carRotation) * carSpeed;
+                car.position.z += Math.cos(carRotation) * carSpeed;
+
+                // Камера следует за машиной
+                const cameraOffset = new THREE.Vector3(0, 4, -8);
+                cameraOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), carRotation);
+                
+                const targetCameraPos = car.position.clone().add(cameraOffset);
+                camera.position.lerp(targetCameraPos, 0.1);
+                camera.lookAt(car.position.clone().add(new THREE.Vector3(0, 1, 0)));
+
+                // Спидометр
+                const speedKmh = Math.abs(carSpeed * 100).toFixed(0);
+                document.getElementById('speedometer').textContent = speedKmh + ' км/ч';
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Обработка изменения размера окна
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
